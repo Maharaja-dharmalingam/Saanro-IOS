@@ -1,0 +1,466 @@
+import { useState, useMemo, useEffect } from 'react';
+import { ChevronRight, ChevronLeft, CheckCircle, MapPin, Briefcase, User, UserCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { REGIONS, INDUSTRIES } from '../lib/types';
+import LocationAutocomplete from '../components/common/LocationAutocomplete';
+
+interface OnboardingPageProps {
+  onComplete: () => void;
+}
+
+type Role = 'mentor' | 'mentee';
+
+export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
+  const { user, profile, refreshProfile } = useAuth();
+
+  const [step, setStep] = useState(1);
+  const [role, setRole] = useState<Role>('mentee');
+  const [fullName, setFullName] = useState('');
+  const [nativeRegion, setNativeRegion] = useState('');
+  const [dialect, setDialect] = useState('Casual');
+  const [bio, setBio] = useState('');
+  const [location, setLocation] = useState('');
+  const [industry, setIndustry] = useState('Technology');
+  const [expertise, setExpertise] = useState<string[]>([]);
+  const [expertiseInput, setExpertiseInput] = useState('');
+  const [yearsExp, setYearsExp] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [pricingMode, setPricingMode] = useState<'free' | 'paid'>('paid');
+  const [price30, setPrice30] = useState<string>('');
+  const [price60, setPrice60] = useState<string>('');
+
+  const TOTAL_STEPS = role === 'mentor' ? 3 : 2;
+
+  // Initialize form from existing profile if available
+  useEffect(() => {
+    if (profile) {
+      if (profile.full_name && profile.full_name.toLowerCase() !== 'there') {
+        setFullName(profile.full_name);
+      } else if (user?.user_metadata?.full_name) {
+        setFullName(user.user_metadata.full_name);
+      }
+
+      if (profile.role) setRole(profile.role as Role);
+      if (profile.native_region) setNativeRegion(profile.native_region);
+      if (profile.primary_dialect) setDialect(profile.primary_dialect);
+      if (profile.bio) setBio(profile.bio);
+      if (profile.location) setLocation(profile.location);
+    } else if (user?.user_metadata?.full_name) {
+      setFullName(user.user_metadata.full_name);
+    }
+  }, [profile, user]);
+
+  const welcomeName = useMemo(() => {
+    if (fullName && fullName.toLowerCase() !== 'there') return fullName;
+    if (user?.user_metadata?.full_name) return user.user_metadata.full_name;
+    return 'there';
+  }, [fullName, user]);
+
+  function addExpertise() {
+    if (expertiseInput.trim() && !expertise.includes(expertiseInput.trim())) {
+      setExpertise([...expertise, expertiseInput.trim()]);
+      setExpertiseInput('');
+    }
+  }
+
+  async function handleComplete() {
+    if (!user || !isValid) return;
+    setSaving(true);
+    setError('');
+
+    try {
+      // SAVE THE TYPED NAME (fullName state) to the database.
+      // This ensures we overwrite the placeholder "there".
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          user_id: user.id,
+          full_name: fullName.trim(),
+          email: user.email,
+          role,
+          native_region: nativeRegion,
+          primary_dialect: dialect,
+          bio,
+          location,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (profileError) throw profileError;
+
+      if (role === 'mentor') {
+        const { data: p } = await supabase.from('profiles').select('id').eq('user_id', user.id).single();
+        if (p) {
+          await supabase.from('mentors').upsert({
+            profile_id: p.id,
+            industry,
+            expertise,
+            tamil_proficiency: dialect as 'Formal' | 'Casual' | 'Both',
+            years_experience: yearsExp,
+            headline: `${industry} Professional`,
+            session_price_30min: pricingMode === 'free' ? 0 : Number(price30 || price60 || 0),
+            session_price_60min: pricingMode === 'free' ? 0 : Number(price60 || price30 || 0),
+          });
+        }
+      }
+
+      await refreshProfile();
+      onComplete();
+    } catch (err: unknown) {
+      console.error("Onboarding Save Error:", err);
+      setError((err as Error).message || 'Failed to save profile');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isValid = useMemo(() => {
+    if (step === 1) return role === 'mentor' || role === 'mentee';
+    if (step === 2) {
+      const nameOk = fullName.trim().length >= 2 && fullName.toLowerCase() !== 'there';
+      const regionOk = nativeRegion.trim().length > 0;
+      const locationOk = location.trim().length > 0;
+      const bioOk = bio.trim().length > 0;
+      return role === 'mentor' ? nameOk && regionOk && bioOk : nameOk && regionOk && locationOk && bioOk;
+    }
+    if (step === 3) {
+      const mentoringOk = !!industry && expertise.length > 0 && yearsExp >= 0;
+      if (!mentoringOk) return false;
+      if (pricingMode === 'paid') {
+        const has30 = price30.trim().length > 0 && Number(price30) >= 0;
+        const has60 = price60.trim().length > 0 && Number(price60) >= 0;
+        return has30 || has60;
+      }
+      return true;
+    }
+    return false;
+  }, [step, role, fullName, nativeRegion, location, bio, industry, expertise, yearsExp, pricingMode, price30, price60]);
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col max-w-md mx-auto">
+      <div className="px-6 pt-12 pb-6">
+        <div className="flex items-center gap-3 mb-8">
+          {step > 1 && (
+            <button
+              onClick={() => setStep(step - 1)}
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-stone-200 bg-white hover:bg-stone-50 active:scale-95 transition-all flex-shrink-0"
+            >
+              <ChevronLeft size={18} className="text-stone-600" />
+            </button>
+          )}
+          <div className="flex gap-1.5 flex-1">
+            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                  i < step ? 'bg-saffron-500' : 'bg-stone-100'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs text-saffron-500 font-semibold uppercase tracking-wider mb-1">
+          Step {step} of {TOTAL_STEPS}
+        </p>
+
+        {step === 1 && (
+          <div className="animate-fade-in">
+            <h2 className="text-2xl font-bold text-stone-800 mb-1">
+              Welcome back, {welcomeName.split(' ')[0]}!
+            </h2>
+            <p className="text-stone-500 text-sm mb-8">
+              How would you like to use the platform today?
+            </p>
+
+            <div className="space-y-3">
+              {([
+                {
+                  value: 'mentee',
+                  title: 'I want to find a Mentor',
+                  tamilTitle: 'மேன்டி',
+                  desc: 'Learn from experienced Tamil professionals and connect with your roots',
+                  icon: User,
+                },
+                {
+                  value: 'mentor',
+                  title: 'I want to be a Mentor',
+                  tamilTitle: 'மேன்டர்',
+                  desc: 'Share your expertise and guide the next generation of Tamil professionals',
+                  icon: Briefcase,
+                },
+              ] as const).map(({ value, title, tamilTitle, desc, icon: Icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setRole(value)}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.98] ${
+                    role === value
+                      ? 'border-saffron-500 bg-saffron-50'
+                      : 'border-stone-100 hover:border-stone-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      role === value ? 'bg-saffron-500' : 'bg-stone-100'
+                    }`}>
+                      <Icon size={18} className={role === value ? 'text-white' : 'text-stone-500'} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-stone-800 text-sm">{title}</p>
+                          <p className="text-tamil text-saffron-500 text-xs">{tamilTitle}</p>
+                        </div>
+                        {role === value && <CheckCircle size={18} className="text-saffron-500 flex-shrink-0" />}
+                      </div>
+                      <p className="text-stone-500 text-xs mt-1 leading-relaxed">{desc}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="animate-fade-in">
+            <h2 className="text-2xl font-bold text-stone-800 mb-1">Verify your details</h2>
+            <p className="text-stone-500 text-sm mb-6">
+              Ensure your name and info are correct.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-stone-700 mb-1.5">
+                  <UserCircle size={14} className="text-saffron-500" />
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  placeholder="Enter your real name"
+                  className="input-field text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-stone-700 mb-2">
+                  <MapPin size={14} className="text-saffron-500" />
+                  Native Region
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {REGIONS.map(region => (
+                    <button
+                      key={region}
+                      onClick={() => setNativeRegion(region)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all active:scale-95 ${
+                        nativeRegion === region
+                          ? 'bg-saffron-500 text-white border-saffron-500'
+                          : 'bg-white text-stone-600 border-stone-200 hover:border-saffron-300'
+                      }`}
+                    >
+                      {region}
+                    </button>
+                  ))}
+                </div>
+                <LocationAutocomplete
+                  value={nativeRegion}
+                  onChange={setNativeRegion}
+                  placeholder="Or type your region..."
+                  className="mt-2"
+                />
+              </div>
+
+              
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">Current Location</label>
+                <LocationAutocomplete
+                  value={location}
+                  onChange={setLocation}
+                  placeholder="e.g., Toronto, Canada"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">About You</label>
+                <textarea
+                  value={bio}
+                  onChange={e => setBio(e.target.value)}
+                  placeholder="Tell your story..."
+                  rows={3}
+                  className="input-field resize-none text-sm"
+                  maxLength={500}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && role === 'mentor' && (
+          <div className="animate-fade-in">
+            <h2 className="text-2xl font-bold text-stone-800 mb-1">Your Expertise</h2>
+            <p className="text-stone-500 text-sm mb-6">
+              Help mentees find you.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-2">Industry</label>
+                <div className="flex flex-wrap gap-2">
+                  {INDUSTRIES.filter(i => i !== 'All').map(ind => (
+                    <button
+                      key={ind}
+                      onClick={() => setIndustry(ind)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all active:scale-95 ${
+                        industry === ind
+                          ? 'bg-saffron-500 text-white border-saffron-500'
+                          : 'bg-white text-stone-600 border-stone-200 hover:border-saffron-300'
+                      }`}
+                    >
+                      {ind}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">
+                  Years of Experience
+                </label>
+                <input
+                  type="number"
+                  value={yearsExp}
+                  onChange={e => setYearsExp(parseInt(e.target.value) || 0)}
+                  min={0}
+                  max={50}
+                  className="input-field text-sm w-24"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">
+                  Areas of Expertise
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={expertiseInput}
+                    onChange={e => setExpertiseInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addExpertise())}
+                    placeholder="e.g., System Design..."
+                    className="flex-1 input-field text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={addExpertise}
+                    className="px-4 py-2 bg-saffron-500 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {expertise.map(exp => (
+                    <span
+                      key={exp}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-saffron-50 text-saffron-700 text-xs font-medium rounded-xl"
+                    >
+                      {exp}
+                      <button
+                        onClick={() => setExpertise(expertise.filter(e => e !== exp))}
+                        className="text-saffron-400 hover:text-saffron-600 ml-0.5"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-stone-700">Pricing</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPricingMode('free')}
+                    className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all active:scale-95 ${
+                      pricingMode === 'free' ? 'bg-saffron-500 text-white border-saffron-500' : 'bg-white text-stone-700 border-stone-200 hover:border-saffron-300'}`}
+                  >
+                    Free
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPricingMode('paid')}
+                    className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all active:scale-95 ${
+                      pricingMode === 'paid' ? 'bg-saffron-500 text-white border-saffron-500' : 'bg-white text-stone-700 border-stone-200 hover:border-saffron-300'}`}
+                  >
+                    Paid
+                  </button>
+                </div>
+
+                {pricingMode === 'paid' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-stone-600 mb-1">30 min price</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={price30}
+                        onChange={e => setPrice30(e.target.value)}
+                        className="input-field text-sm"
+                        placeholder="e.g. 20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-stone-600 mb-1">60 min price</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={price60}
+                        onChange={e => setPrice60(e.target.value)}
+                        className="input-field text-sm"
+                        placeholder="e.g. 35"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-3">
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-auto px-6 pb-10">
+        {step < TOTAL_STEPS ? (
+          <button
+            onClick={() => { if (isValid) setStep(step + 1); }}
+            disabled={!isValid}
+            className="w-full btn-primary py-4 text-base flex items-center justify-center gap-2"
+          >
+            Continue
+            <ChevronRight size={18} />
+          </button>
+        ) : (
+          <button
+            onClick={handleComplete}
+            disabled={saving || !isValid}
+            className="w-full btn-primary py-4 text-base"
+          >
+            {saving ? 'Saving changes...' : 'Enter Saanro'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,232 @@
+export interface Profile {
+  id: string;
+  user_id: string | null;
+  full_name: string;
+  email: string | null;
+  role: 'mentor' | 'mentee';
+  avatar_url: string | null;
+  native_region: string;
+  primary_dialect: string;
+  bio: string;
+  location: string;
+  linkedin_url: string;
+  preferred_currency: string;
+  phone: string | null;
+  notification_preferences: {
+    session_reminders: boolean;
+    booking_updates: boolean;
+    new_messages: boolean;
+    reviews_ratings: boolean;
+    announcements: boolean;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Mentor {
+  id: string;
+  profile_id: string;
+  industry: string;
+  expertise: string[];
+  tamil_proficiency: 'Formal' | 'Casual' | 'Both';
+  years_experience: number;
+  session_price_30min: number;
+  session_price_60min: number;
+  rating: number;
+  total_sessions: number;
+  is_available: boolean;
+  languages: string[];
+  headline: string;
+  created_at: string;
+  stripe_account_id?: string | null;
+  stripe_onboarding_complete?: boolean;
+  profiles?: Profile;
+}
+
+export interface TimeSlot {
+  id: string;
+  mentor_id: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  is_booked: boolean;
+  timezone: string;
+}
+
+export interface Booking {
+  id: string;
+  mentee_id: string;
+  mentor_id: string;
+  time_slot_id: string | null;
+  scheduled_at: string;
+  requested_at: string | null;
+  duration_minutes: number;
+  status: 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled';
+  meeting_link: string;
+  notes: string;
+  mentee_message: string;
+  mentee_timezone: string;
+  created_at: string;
+  updated_at: string;
+  mentor?: Mentor & { profiles: Profile };
+  profiles?: Profile;
+}
+
+export interface Question {
+  id: string;
+  booking_id: string;
+  author_id: string;
+  content: string;
+  is_answered: boolean;
+  answer: string;
+  created_at: string;
+}
+
+export interface Thirukkural {
+  id: number;
+  kural_number: number;
+  tamil_text: string;
+  transliteration: string;
+  english_meaning: string;
+  career_application: string;
+  chapter: string;
+}
+
+export interface MentorshipPackage {
+  id: string;
+  mentor_id: string;
+  title: string;
+  description: string;
+  price_usd: number;
+  duration_minutes: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Testimonial {
+  id: string;
+  mentor_id: string;
+  mentee_id: string;
+  booking_id: string | null;
+  rating: number;
+  content: string;
+  is_featured: boolean;
+  created_at: string;
+  profiles?: Profile;
+}
+
+export interface MentorAvailability {
+  id: string;
+  mentor_id: string;
+  day_of_week: number;
+  start_hour: number;
+  start_minute: number;
+  duration_minutes: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface MenteeRequest {
+  id: string;
+  mentor_id: string;
+  mentee_id: string;
+  goal: string;
+  message: string;
+  preferred_time: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  updated_at: string;
+  profiles?: Profile;
+}
+
+export interface Earning {
+  id: string;
+  mentor_id: string;
+  booking_id: string | null;
+  amount_usd: number;
+  status: 'pending' | 'paid' | 'refunded';
+  session_date: string;
+  created_at: string;
+}
+
+export interface MenteeNote {
+  id: string;
+  mentor_id: string;
+  mentee_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Resource {
+  id: string;
+  mentor_id: string;
+  title: string;
+  description: string;
+  url: string;
+  category: string;
+  resource_type: 'link' | 'file';
+  created_at: string;
+}
+
+export type Page = 'home' | 'discover' | 'bookings' | 'notifications' | 'profile';
+export type AppView = 'auth' | 'onboarding' | 'app';
+
+export interface FilterState {
+  search: string;
+  industry: string;
+  tamil_proficiency: string;
+  native_region: string;
+}
+
+export const INDUSTRIES = [
+  'All',
+  'Technology',
+  'Engineering',
+  'Business',
+  'Consulting',
+  'Entrepreneurship',
+  'Finance',
+  'Marketing',
+  'Design',
+  'Healthcare',
+  'Psychology',
+  'Education',
+  'Law',
+  'Legal Services',
+  'Real Estate',
+  'Media & Entertainment',
+  'Hospitality',
+  'Manufacturing',
+  'Energy',
+  'Logistics',
+  'Sports & Fitness',
+  'Arts & Culture',
+  'Science',
+  'Human Resources',
+  'Non-Profit',
+  'Government',
+  'Agriculture',
+  'Other',
+];
+export const DIALECTS = ['Formal', 'Casual', 'Both'];
+export const REGIONS = ['Chennai', 'Madurai', 'Coimbatore', 'Trichy', 'Jaffna', 'Colombo', 'Singapore', 'Kuala Lumpur', 'Toronto', 'London', 'New York', 'San Francisco', 'Sydney', 'Dubai'];
+export const PROFICIENCY_LEVELS = ['Formal', 'Casual', 'Both'];
+
+export const CURRENCIES: Array<{ code: string; symbol: string; name: string }> = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'LKR', symbol: 'Rs', name: 'Sri Lankan Rupee' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
+  { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+];
